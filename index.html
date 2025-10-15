@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>俄罗斯方块</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        canvas {
+            border: 1px solid #000;
+            background-color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="200" height="400"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const gridSize = 20; // 每个方块的大小
+        const rows = 20; // 网格行数
+        const cols = 10; // 网格列数
+        const colors = ['#FF5733', '#33FF57', '#3357FF', '#F3FF33', '#FF33A8'];
+
+        let grid = Array.from({ length: rows }, () => Array(cols).fill(0)); // 初始化网格
+        let currentPiece = null; // 当前方块
+        let gameInterval;
+
+        // 定义方块形状
+        const pieces = [
+            [[1, 1, 1], [0, 1, 0]], // T 形
+            [[1, 1], [1, 1]],       // O 形
+            [[1, 1, 0], [0, 1, 1]], // Z 形
+            [[0, 1, 1], [1, 1, 0]], // S 形
+            [[1, 1, 1, 1]]          // I 形
+        ];
+
+        // 随机生成方块
+        function createPiece() {
+            const shape = pieces[Math.floor(Math.random() * pieces.length)];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            return {
+                shape,
+                color,
+                x: Math.floor((cols - shape[0].length) / 2),
+                y: 0
+            };
+        }
+
+        // 绘制网格
+        function drawGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (grid[r][c]) {
+                        ctx.fillStyle = grid[r][c];
+                        ctx.fillRect(c * gridSize, r * gridSize, gridSize, gridSize);
+                        ctx.strokeRect(c * gridSize, r * gridSize, gridSize, gridSize);
+                    }
+                }
+            }
+        }
+
+        // 绘制当前方块
+        function drawPiece(piece) {
+            piece.shape.forEach((row, r) => {
+                row.forEach((cell, c) => {
+                    if (cell) {
+                        ctx.fillStyle = piece.color;
+                        ctx.fillRect((piece.x + c) * gridSize, (piece.y + r) * gridSize, gridSize, gridSize);
+                        ctx.strokeRect((piece.x + c) * gridSize, (piece.y + r) * gridSize, gridSize, gridSize);
+                    }
+                });
+            });
+        }
+
+        // 检查是否碰撞
+        function isCollision(piece, offsetX, offsetY) {
+            return piece.shape.some((row, r) => {
+                return row.some((cell, c) => {
+                    if (cell) {
+                        const newX = piece.x + c + offsetX;
+                        const newY = piece.y + r + offsetY;
+                        return newX < 0 || newX >= cols || newY >= rows || (newY >= 0 && grid[newY][newX]);
+                    }
+                });
+            });
+        }
+
+        // 固定方块到网格
+        function mergePiece(piece) {
+            piece.shape.forEach((row, r) => {
+                row.forEach((cell, c) => {
+                    if (cell) {
+                        grid[piece.y + r][piece.x + c] = piece.color;
+                    }
+                });
+            });
+        }
+
+        // 清除完整的行
+        function clearLines() {
+            grid = grid.filter(row => row.some(cell => !cell));
+            while (grid.length < rows) {
+                grid.unshift(Array(cols).fill(0));
+            }
+        }
+
+        // 更新游戏状态
+        function updateGame() {
+            if (!currentPiece) {
+                currentPiece = createPiece();
+            }
+
+            if (!isCollision(currentPiece, 0, 1)) {
+                currentPiece.y++;
+            } else {
+                mergePiece(currentPiece);
+                clearLines();
+                currentPiece = createPiece();
+                if (isCollision(currentPiece, 0, 0)) {
+                    alert('游戏结束！');
+                    clearInterval(gameInterval);
+                }
+            }
+
+            drawGrid();
+            drawPiece(currentPiece);
+        }
+
+        // 处理键盘输入
+        function handleKeyPress(event) {
+            if (!currentPiece) return;
+
+            if (event.key === 'ArrowLeft' && !isCollision(currentPiece, -1, 0)) {
+                currentPiece.x--;
+            } else if (event.key === 'ArrowRight' && !isCollision(currentPiece, 1, 0)) {
+                currentPiece.x++;
+            } else if (event.key === 'ArrowDown' && !isCollision(currentPiece, 0, 1)) {
+                currentPiece.y++;
+            } else if (event.key === 'ArrowUp') {
+                const rotatedShape = currentPiece.shape[0].map((_, i) =>
+                    currentPiece.shape.map(row => row[i]).reverse()
+                );
+                if (!isCollision({ ...currentPiece, shape: rotatedShape }, 0, 0)) {
+                    currentPiece.shape = rotatedShape;
+                }
+            }
+        }
+
+        // 初始化游戏
+        function initGame() {
+            document.addEventListener('keydown', handleKeyPress);
+            gameInterval = setInterval(updateGame, 500); // 每 500 毫秒更新一次
+        }
+
+        initGame();
+    </script>
+</body>
+</html>
