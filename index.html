@@ -1,168 +1,574 @@
 <!DOCTYPE html>
-<html lang="zh-cn">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>俄罗斯方块</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>连连看游戏</title>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            touch-action: manipulation;
+        }
+        
+        h1 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 500px;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .game-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            aspect-ratio: 1/1;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .game-board {
+            display: grid;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .tile {
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #f0f0f0;
+            background-color: #4CAF50;
+            color: white;
+            font-size: 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+            -webkit-user-select: none;
         }
-        canvas {
-            border: 1px solid #000;
-            background-color: #fff;
+        
+        .tile.selected {
+            background-color: #FFC107;
+            transform: scale(0.95);
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+        }
+        
+        .tile.hidden {
+            visibility: hidden;
+        }
+        
+        .tile.matched {
+            background-color: #8BC34A;
+        }
+        
+        .path {
+            position: absolute;
+            background-color: rgba(255, 255, 0, 0.5);
+            z-index: 10;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        @media (max-width: 500px) {
+            .tile {
+                font-size: 18px;
+            }
+            
+            .game-info {
+                font-size: 16px;
+            }
+            
+            button {
+                padding: 8px 16px;
+                font-size: 14px;
+            }
         }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="200" height="400"></canvas>
+    <h1>连连看游戏</h1>
+    <div class="game-info">
+        <div>时间: <span id="time">0</span>秒</div>
+        <div>剩余: <span id="remaining">0</span>对</div>
+    </div>
+    <div class="game-container">
+        <div class="game-board" id="gameBoard"></div>
+    </div>
+    <div class="controls">
+        <button id="newGameBtn">新游戏</button>
+        <button id="hintBtn">提示</button>
+    </div>
+
     <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-
-        const gridSize = 20; // 每个方块的大小
-        const rows = 20; // 网格行数
-        const cols = 10; // 网格列数
-        const colors = ['#FF5733', '#33FF57', '#3357FF', '#F3FF33', '#FF33A8'];
-
-        let grid = Array.from({ length: rows }, () => Array(cols).fill(0)); // 初始化网格
-        let currentPiece = null; // 当前方块
-        let gameInterval;
-
-        // 定义方块形状
-        const pieces = [
-            [[1, 1, 1], [0, 1, 0]], // T 形
-            [[1, 1], [1, 1]],       // O 形
-            [[1, 1, 0], [0, 1, 1]], // Z 形
-            [[0, 1, 1], [1, 1, 0]], // S 形
-            [[1, 1, 1, 1]]          // I 形
-        ];
-
-        // 随机生成方块
-        function createPiece() {
-            const shape = pieces[Math.floor(Math.random() * pieces.length)];
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            return {
-                shape,
-                color,
-                x: Math.floor((cols - shape[0].length) / 2),
-                y: 0
+        document.addEventListener('DOMContentLoaded', function() {
+            // 游戏配置
+            const config = {
+                rows: 8,
+                cols: 10,
+                tileTypes: 20, // 不同图标的种类数量
+                gameTime: 300 // 游戏时间(秒)
             };
-        }
-
-        // 绘制网格
-        function drawGrid() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    if (grid[r][c]) {
-                        ctx.fillStyle = grid[r][c];
-                        ctx.fillRect(c * gridSize, r * gridSize, gridSize, gridSize);
-                        ctx.strokeRect(c * gridSize, r * gridSize, gridSize, gridSize);
+            
+            // 游戏状态
+            let gameState = {
+                board: [],
+                selectedTile: null,
+                matchedPairs: 0,
+                totalPairs: 0,
+                timeLeft: config.gameTime,
+                timer: null,
+                isPlaying: false,
+                icons: []
+            };
+            
+            // DOM元素
+            const gameBoard = document.getElementById('gameBoard');
+            const timeDisplay = document.getElementById('time');
+            const remainingDisplay = document.getElementById('remaining');
+            const newGameBtn = document.getElementById('newGameBtn');
+            const hintBtn = document.getElementById('hintBtn');
+            
+            // 初始化游戏
+            function initGame() {
+                // 清除之前的游戏状态
+                clearInterval(gameState.timer);
+                gameBoard.innerHTML = '';
+                
+                // 初始化游戏状态
+                gameState.board = [];
+                gameState.selectedTile = null;
+                gameState.matchedPairs = 0;
+                gameState.timeLeft = config.gameTime;
+                gameState.isPlaying = true;
+                
+                // 计算总对数
+                gameState.totalPairs = Math.floor((config.rows * config.cols) / 2);
+                remainingDisplay.textContent = gameState.totalPairs;
+                timeDisplay.textContent = gameState.timeLeft;
+                
+                // 设置游戏板网格
+                gameBoard.style.gridTemplateColumns = `repeat(${config.cols}, 1fr)`;
+                gameBoard.style.gridTemplateRows = `repeat(${config.rows}, 1fr)`;
+                
+                // 生成图标
+                generateIcons();
+                
+                // 创建游戏板
+                createBoard();
+                
+                // 开始计时器
+                gameState.timer = setInterval(updateTimer, 1000);
+            }
+            
+            // 生成图标对
+            function generateIcons() {
+                gameState.icons = [];
+                const pairsNeeded = gameState.totalPairs;
+                
+                // 使用emoji作为图标
+                const emojis = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', 
+                               '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦄'];
+                
+                // 随机选择需要的图标
+                const selectedEmojis = [];
+                for (let i = 0; i < pairsNeeded; i++) {
+                    const emoji = emojis[i % emojis.length];
+                    selectedEmojis.push(emoji, emoji); // 每对两个相同的
+                }
+                
+                // 随机排序
+                shuffleArray(selectedEmojis);
+                gameState.icons = selectedEmojis;
+            }
+            
+            // 创建游戏板
+            function createBoard() {
+                for (let i = 0; i < config.rows; i++) {
+                    gameState.board[i] = [];
+                    for (let j = 0; j < config.cols; j++) {
+                        const index = i * config.cols + j;
+                        const tile = document.createElement('div');
+                        tile.className = 'tile';
+                        
+                        // 如果图标足够，则分配，否则留空
+                        if (index < gameState.icons.length) {
+                            tile.textContent = gameState.icons[index];
+                            tile.dataset.value = gameState.icons[index];
+                            tile.dataset.row = i;
+                            tile.dataset.col = j;
+                            
+                            tile.addEventListener('click', handleTileClick);
+                            tile.addEventListener('touchstart', handleTileClick, { passive: true });
+                        } else {
+                            tile.classList.add('hidden');
+                        }
+                        
+                        gameBoard.appendChild(tile);
+                        gameState.board[i][j] = {
+                            element: tile,
+                            value: index < gameState.icons.length ? gameState.icons[index] : null,
+                            matched: false
+                        };
                     }
                 }
             }
-        }
-
-        // 绘制当前方块
-        function drawPiece(piece) {
-            piece.shape.forEach((row, r) => {
-                row.forEach((cell, c) => {
-                    if (cell) {
-                        ctx.fillStyle = piece.color;
-                        ctx.fillRect((piece.x + c) * gridSize, (piece.y + r) * gridSize, gridSize, gridSize);
-                        ctx.strokeRect((piece.x + c) * gridSize, (piece.y + r) * gridSize, gridSize, gridSize);
+            
+            // 处理方块点击
+            function handleTileClick(e) {
+                if (!gameState.isPlaying) return;
+                
+                // 防止触摸事件和点击事件同时触发
+                if (e.type === 'touchstart') {
+                    e.preventDefault();
+                }
+                
+                const tile = e.currentTarget;
+                const row = parseInt(tile.dataset.row);
+                const col = parseInt(tile.dataset.col);
+                const cell = gameState.board[row][col];
+                
+                // 忽略已匹配或隐藏的方块
+                if (cell.matched || cell.value === null) return;
+                
+                // 如果已经选中了一个方块
+                if (gameState.selectedTile) {
+                    const selectedRow = gameState.selectedTile.row;
+                    const selectedCol = gameState.selectedTile.col;
+                    
+                    // 如果点击的是同一个方块，取消选择
+                    if (selectedRow === row && selectedCol === col) {
+                        gameState.selectedTile.element.classList.remove('selected');
+                        gameState.selectedTile = null;
+                        return;
                     }
-                });
-            });
-        }
-
-        // 检查是否碰撞
-        function isCollision(piece, offsetX, offsetY) {
-            return piece.shape.some((row, r) => {
-                return row.some((cell, c) => {
-                    if (cell) {
-                        const newX = piece.x + c + offsetX;
-                        const newY = piece.y + r + offsetY;
-                        return newX < 0 || newX >= cols || newY >= rows || (newY >= 0 && grid[newY][newX]);
+                    
+                    // 如果值相同，检查是否可以连接
+                    if (cell.value === gameState.selectedTile.value) {
+                        const path = findPath(
+                            {row: selectedRow, col: selectedCol},
+                            {row, col}
+                        );
+                        
+                        if (path) {
+                            // 显示连接路径
+                            showPath(path);
+                            
+                            // 标记为已匹配
+                            cell.matched = true;
+                            gameState.selectedTile.matched = true;
+                            
+                            cell.element.classList.add('matched');
+                            gameState.selectedTile.element.classList.add('matched');
+                            
+                            // 更新匹配对数
+                            gameState.matchedPairs++;
+                            remainingDisplay.textContent = gameState.totalPairs - gameState.matchedPairs;
+                            
+                            // 检查游戏是否结束
+                            if (gameState.matchedPairs === gameState.totalPairs) {
+                                endGame(true);
+                            }
+                        }
                     }
-                });
-            });
-        }
-
-        // 固定方块到网格
-        function mergePiece(piece) {
-            piece.shape.forEach((row, r) => {
-                row.forEach((cell, c) => {
-                    if (cell) {
-                        grid[piece.y + r][piece.x + c] = piece.color;
-                    }
-                });
-            });
-        }
-
-        // 清除完整的行
-        function clearLines() {
-            grid = grid.filter(row => row.some(cell => !cell));
-            while (grid.length < rows) {
-                grid.unshift(Array(cols).fill(0));
-            }
-        }
-
-        // 更新游戏状态
-        function updateGame() {
-            if (!currentPiece) {
-                currentPiece = createPiece();
-            }
-
-            if (!isCollision(currentPiece, 0, 1)) {
-                currentPiece.y++;
-            } else {
-                mergePiece(currentPiece);
-                clearLines();
-                currentPiece = createPiece();
-                if (isCollision(currentPiece, 0, 0)) {
-                    alert('游戏结束！');
-                    clearInterval(gameInterval);
+                    
+                    // 无论是否匹配，都取消选择
+                    gameState.selectedTile.element.classList.remove('selected');
+                    gameState.selectedTile = null;
+                } else {
+                    // 选择当前方块
+                    gameState.selectedTile = {
+                        element: tile,
+                        value: cell.value,
+                        row,
+                        col
+                    };
+                    tile.classList.add('selected');
                 }
             }
-
-            drawGrid();
-            drawPiece(currentPiece);
-        }
-
-        // 处理键盘输入
-        function handleKeyPress(event) {
-            if (!currentPiece) return;
-
-            if (event.key === 'ArrowLeft' && !isCollision(currentPiece, -1, 0)) {
-                currentPiece.x--;
-            } else if (event.key === 'ArrowRight' && !isCollision(currentPiece, 1, 0)) {
-                currentPiece.x++;
-            } else if (event.key === 'ArrowDown' && !isCollision(currentPiece, 0, 1)) {
-                currentPiece.y++;
-            } else if (event.key === 'ArrowUp') {
-                const rotatedShape = currentPiece.shape[0].map((_, i) =>
-                    currentPiece.shape.map(row => row[i]).reverse()
-                );
-                if (!isCollision({ ...currentPiece, shape: rotatedShape }, 0, 0)) {
-                    currentPiece.shape = rotatedShape;
+            
+            // 寻找连接路径 (使用广度优先搜索)
+            function findPath(start, end) {
+                // 如果两个方块位置相同，直接返回
+                if (start.row === end.row && start.col === end.col) {
+                    return null;
+                }
+                
+                // 检查直接连接 (0折)
+                if (canConnect(start, end, [])) {
+                    return [start, end];
+                }
+                
+                // 检查1折连接
+                const corner1 = {row: start.row, col: end.col};
+                if (isPositionValid(corner1) && 
+                    canConnect(start, corner1, []) && 
+                    canConnect(corner1, end, [])) {
+                    return [start, corner1, end];
+                }
+                
+                const corner2 = {row: end.row, col: start.col};
+                if (isPositionValid(corner2) && 
+                    canConnect(start, corner2, []) && 
+                    canConnect(corner2, end, [])) {
+                    return [start, corner2, end];
+                }
+                
+                // 检查2折连接 (需要更复杂的搜索)
+                // 这里简化处理，实际游戏中可能需要更高效的算法
+                for (let i = 0; i < config.rows; i++) {
+                    const cornerA = {row: i, col: start.col};
+                    const cornerB = {row: i, col: end.col};
+                    
+                    if (i !== start.row && i !== end.row &&
+                        isPositionValid(cornerA) && isPositionValid(cornerB) &&
+                        canConnect(start, cornerA, []) &&
+                        canConnect(cornerA, cornerB, []) &&
+                        canConnect(cornerB, end, [])) {
+                        return [start, cornerA, cornerB, end];
+                    }
+                }
+                
+                for (let j = 0; j < config.cols; j++) {
+                    const cornerA = {row: start.row, col: j};
+                    const cornerB = {row: end.row, col: j};
+                    
+                    if (j !== start.col && j !== end.col &&
+                        isPositionValid(cornerA) && isPositionValid(cornerB) &&
+                        canConnect(start, cornerA, []) &&
+                        canConnect(cornerA, cornerB, []) &&
+                        canConnect(cornerB, end, [])) {
+                        return [start, cornerA, cornerB, end];
+                    }
+                }
+                
+                return null;
+            }
+            
+            // 检查两点是否可以直线连接
+            function canConnect(a, b, exclude) {
+                // 如果是同一个点
+                if (a.row === b.row && a.col === b.col) {
+                    return true;
+                }
+                
+                // 水平连接
+                if (a.row === b.row) {
+                    const start = Math.min(a.col, b.col);
+                    const end = Math.max(a.col, b.col);
+                    
+                    for (let col = start + 1; col < end; col++) {
+                        const pos = {row: a.row, col};
+                        if (!isPositionEmpty(pos) && !isExcluded(pos, exclude)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+                
+                // 垂直连接
+                if (a.col === b.col) {
+                    const start = Math.min(a.row, b.row);
+                    const end = Math.max(a.row, b.row);
+                    
+                    for (let row = start + 1; row < end; row++) {
+                        const pos = {row, col: a.col};
+                        if (!isPositionEmpty(pos) && !isExcluded(pos, exclude)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+                
+                return false;
+            }
+            
+            // 检查位置是否为空(无方块或已匹配)
+            function isPositionEmpty(pos) {
+                if (pos.row < 0 || pos.row >= config.rows || pos.col < 0 || pos.col >= config.cols) {
+                    return true; // 超出边界视为空
+                }
+                return gameState.board[pos.row][pos.col].value === null || 
+                       gameState.board[pos.row][pos.col].matched;
+            }
+            
+            // 检查位置是否在排除列表中
+            function isExcluded(pos, exclude) {
+                return exclude.some(p => p.row === pos.row && p.col === pos.col);
+            }
+            
+            // 检查位置是否有效
+            function isPositionValid(pos) {
+                return pos.row >= 0 && pos.row < config.rows && 
+                       pos.col >= 0 && pos.col < config.cols;
+            }
+            
+            // 显示连接路径
+            function showPath(path) {
+                // 清除之前的路径
+                const oldPaths = document.querySelectorAll('.path');
+                oldPaths.forEach(p => p.remove());
+                
+                // 绘制新路径
+                for (let i = 0; i < path.length - 1; i++) {
+                    const start = path[i];
+                    const end = path[i + 1];
+                    
+                    const pathElement = document.createElement('div');
+                    pathElement.className = 'path';
+                    
+                    // 计算路径位置和尺寸
+                    const tileSize = gameBoard.clientWidth / config.cols;
+                    const left = Math.min(start.col, end.col) * tileSize;
+                    const top = Math.min(start.row, end.row) * tileSize;
+                    
+                    if (start.row === end.row) {
+                        // 水平路径
+                        pathElement.style.left = `${left + tileSize/2}px`;
+                        pathElement.style.top = `${top + tileSize/2 - 2}px`;
+                        pathElement.style.width = `${Math.abs(end.col - start.col) * tileSize}px`;
+                        pathElement.style.height = '4px';
+                    } else {
+                        // 垂直路径
+                        pathElement.style.left = `${left + tileSize/2 - 2}px`;
+                        pathElement.style.top = `${top + tileSize/2}px`;
+                        pathElement.style.width = '4px';
+                        pathElement.style.height = `${Math.abs(end.row - start.row) * tileSize}px`;
+                    }
+                    
+                    gameBoard.appendChild(pathElement);
+                    
+                    // 3秒后淡出路径
+                    setTimeout(() => {
+                        pathElement.style.opacity = '0';
+                        setTimeout(() => pathElement.remove(), 300);
+                    }, 500);
                 }
             }
-        }
-
-        // 初始化游戏
-        function initGame() {
-            document.addEventListener('keydown', handleKeyPress);
-            gameInterval = setInterval(updateGame, 500); // 每 500 毫秒更新一次
-        }
-
-        initGame();
+            
+            // 更新计时器
+            function updateTimer() {
+                if (!gameState.isPlaying) return;
+                
+                gameState.timeLeft--;
+                timeDisplay.textContent = gameState.timeLeft;
+                
+                if (gameState.timeLeft <= 0) {
+                    endGame(false);
+                }
+            }
+            
+            // 结束游戏
+            function endGame(isWin) {
+                gameState.isPlaying = false;
+                clearInterval(gameState.timer);
+                
+                if (isWin) {
+                    alert(`恭喜你赢了！用时 ${config.gameTime - gameState.timeLeft} 秒`);
+                } else {
+                    alert('时间到！游戏结束');
+                }
+            }
+            
+            // 提示功能
+            function showHint() {
+                if (!gameState.isPlaying) return;
+                
+                // 查找可以连接的一对
+                for (let i1 = 0; i1 < config.rows; i1++) {
+                    for (let j1 = 0; j1 < config.cols; j1++) {
+                        const cell1 = gameState.board[i1][j1];
+                        if (cell1.matched || cell1.value === null) continue;
+                        
+                        for (let i2 = 0; i2 < config.rows; i2++) {
+                            for (let j2 = 0; j2 < config.cols; j2++) {
+                                const cell2 = gameState.board[i2][j2];
+                                if ((i1 === i2 && j1 === j2) || cell2.matched || cell2.value === null) continue;
+                                
+                                if (cell1.value === cell2.value) {
+                                    const path = findPath(
+                                        {row: i1, col: j1},
+                                        {row: i2, col: j2}
+                                    );
+                                    
+                                    if (path) {
+                                        // 高亮显示这对方块
+                                        cell1.element.classList.add('selected');
+                                        cell2.element.classList.add('selected');
+                                        
+                                        // 显示连接路径
+                                        showPath(path);
+                                        
+                                        // 3秒后取消高亮
+                                        setTimeout(() => {
+                                            cell1.element.classList.remove('selected');
+                                            cell2.element.classList.remove('selected');
+                                        }, 2000);
+                                        
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                alert('没有找到可连接的方块对！');
+            }
+            
+            // 辅助函数：随机打乱数组
+            function shuffleArray(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+                return array;
+            }
+            
+            // 事件监听
+            newGameBtn.addEventListener('click', initGame);
+            hintBtn.addEventListener('click', showHint);
+            
+            // 开始游戏
+            initGame();
+        });
     </script>
 </body>
 </html>
